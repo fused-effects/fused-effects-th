@@ -21,8 +21,10 @@ source-repository head
   location:            https://github.com/patrickt/fused-effects-th.git
 
 common common-options
-  build-depends:       base ^>= 4.13.0.0
-  
+  build-depends:       base >= 4.9 && < 4.15
+                     , fused-effects ^>= 1.1
+                     , template-haskell >= 2.12 && < 2.17
+
   ghc-options:         -Wall
                        -Wcompat
                        -Widentities
@@ -43,16 +45,7 @@ common common-options
 library
   import:              common-options
   hs-source-dirs:      src
-  exposed-modules:     FusedEffectsTh
-
-executable fused-effects-th
-  import:              common-options
-  hs-source-dirs:      app
-  main-is:             Main.hs
-  build-depends:       fused-effects-th
-  ghc-options:         -threaded
-                       -rtsopts
-                       -with-rtsopts=-N
+  exposed-modules:     Control.Effect.TH
 
 test-suite fused-effects-th-test
   import:              common-options
