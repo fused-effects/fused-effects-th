@@ -1,3 +1,6 @@
 cradle:
   cabal:
-    component: "lib:fused-effects-th"
+    - path: "./src"
+      component: "lib:fused-effects-th"
+    - path: "./test"
+      component: "test:fused-effects-th-test"
