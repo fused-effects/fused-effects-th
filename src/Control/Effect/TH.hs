@@ -42,24 +42,24 @@ data PerDecl = PerDecl
 --
 -- an invocation of @makeEffectDefinitions ''State@ will generate code that looks like
 --
--- @
---   get ::
---     forall (s :: Type) sig (m :: Type -> Type).
---     Has (State s) sig m =>
---     m s
---   get = send Get
---   {-# INLINEABLE get #-}
----   put ::
---     forall (s :: Type) sig (m :: Type -> Type).
---     Has (State s) sig m =>
---     s ->
---     m ()
---   put a = send (Put a)
---   {-# INLINEABLE put #-}
--- @
+--
+-- >   get ::
+-- >     forall (s :: Type) sig (m :: Type -> Type).
+-- >     Has (State s) sig m =>
+-- >     m s
+-- >   get = send Get
+-- >   {-# INLINEABLE get #-}
+-- >    put ::
+-- >     forall (s :: Type) sig (m :: Type -> Type).
+-- >     Has (State s) sig m =>
+-- >     s ->
+-- >     m ()
+-- >   put a = send (Put a)
+-- >   {-# INLINEABLE put #-}
+--
 --
 -- The type variables in each declared function signature will appear in the order
--- they were defined in the state type.
+-- they were defined in the effect type.
 --
 makeEffectDefinitions :: Name -> TH.DecsQ
 makeEffectDefinitions typ =
