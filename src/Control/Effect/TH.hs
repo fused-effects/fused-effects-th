@@ -3,8 +3,9 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
+-- | Defines splices that cut down on boilerplate associated with declaring new effects.
 module Control.Effect.TH
-  ( makeEffectDefinitions,
+  ( makeSmartConstructors,
   )
 where
 
@@ -27,10 +28,11 @@ data PerDecl = PerDecl
     functionName :: TH.Name,
     ctorArgs :: [TH.Type],
     returnType :: TH.Type,
-    perEffect :: PerEffect
+    perEffect :: PerEffect,
+    extraTyVars :: [TyVarBndr]
   }
 
--- | Given an effect type, this splice generates functions that invoke its constructors, using 'send'.
+-- | Given an effect type, this splice generates functions that create per-constructor request functions.
 --
 -- That is to say, given the standard @State@ type
 --
@@ -40,7 +42,7 @@ data PerDecl = PerDecl
 --     Put :: s -> State s m ()
 -- @
 --
--- an invocation of @makeEffectDefinitions ''State@ will generate code that looks like
+-- an invocation of @makeSmartConstructors ''State@ will generate code that looks like
 --
 --
 -- >   get ::
@@ -61,8 +63,8 @@ data PerDecl = PerDecl
 -- The type variables in each declared function signature will appear in the order
 -- they were defined in the effect type.
 --
-makeEffectDefinitions :: Name -> TH.DecsQ
-makeEffectDefinitions typ =
+makeSmartConstructors :: Name -> TH.DecsQ
+makeSmartConstructors typ =
   TH.reify typ >>= \case
     TH.TyConI (TH.DataD _ctx typeName tyvars _kind cons _derive) -> do
       -- Pick out the `m` argument. We can drop `k` on the floor.
@@ -76,9 +78,9 @@ makeEffectDefinitions typ =
 
 makeDeclaration :: PerEffect -> TH.DecsQ
 makeDeclaration perEffect@PerEffect {..} = do
-  (names, ctorArgs, returnWithResult) <- case forallConstructor of
-    TH.ForallC _vars _ctx (TH.GadtC names bangtypes returnType) ->
-      pure (names, fmap snd bangtypes, returnType)
+  (names, ctorArgs, returnWithResult, extraTyVars) <- case forallConstructor of
+    TH.ForallC vars _ctx (TH.GadtC names bangtypes returnType) ->
+      pure (names, fmap snd bangtypes, returnType, vars)
     _ ->
       fail ("BUG: expected forall-qualified constructor, but didn't get one")
   returnType <- case returnWithResult of
@@ -119,7 +121,7 @@ makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
         TH.PlainTV t -> t
         TH.KindedTV t _ -> t
       monadName = varT (getTyVar monadTypeVar)
-      invocation = foldl' (\a b -> a `appT` b) (conT typeName) (fmap (varT . getTyVar) rest)
+      invocation = foldl' appT (conT typeName) (fmap (varT . getTyVar) rest)
       hasConstraint = [t|Has $(parensT invocation) $(varT (mkName "sig")) $(monadName)|]
       folded = foldr (\a b -> arrowT `appT` pure a `appT` b) (monadName `appT` pure returnType) ctorArgs
-   in TH.sigD functionName (TH.forallT (rest ++ [sigVar, monadTypeVar]) (TH.cxt [hasConstraint]) folded)
+   in TH.sigD functionName (TH.forallT (extraTyVars ++ [sigVar]) (TH.cxt [hasConstraint]) folded)

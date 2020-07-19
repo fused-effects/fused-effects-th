@@ -1,7 +1,10 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -ddump-splices #-}
+{-# OPTIONS_GHC -Wno-unused-binds #-}
 
 module Main
   ( main,
@@ -10,6 +13,8 @@ where
 
 import Control.Carrier.State.Strict (evalState)
 import Control.Effect.State hiding (get, put)
+import Control.Effect.Reader hiding (ask, local)
+import Control.Effect.Writer hiding (tell, listen, censor)
 import Control.Effect.TH
 import Control.Exception (SomeException, try)
 import Data.Either
@@ -18,7 +23,13 @@ import System.IO
 import Test.Tasty
 import Test.Tasty.HUnit
 
-makeEffectDefinitions ''State
+makeSmartConstructors ''State
+makeSmartConstructors ''Reader
+makeSmartConstructors ''Writer
+
+-- Need to ensure that if a constructor introduces a new type variable,
+-- that it is introduced in the corresponding invocation. The question is
+-- where we can put it. Probably before `sig m`.
 
 assertThrows :: String -> IO a -> Assertion
 assertThrows msg go =
@@ -35,8 +46,8 @@ data BadGADT where
 testDataErrors :: TestTree
 testDataErrors =
   testCase "Bad data types" $ do
-    assertThrows "Bool" (runQ (makeEffectDefinitions ''Bool))
-    assertThrows "Ill-formed GADT" (runQ (makeEffectDefinitions ''BadGADT))
+    assertThrows "Bool" (runQ (makeSmartConstructors ''Bool))
+    assertThrows "Ill-formed GADT" (runQ (makeSmartConstructors ''BadGADT))
 
 main :: IO ()
 main = do
