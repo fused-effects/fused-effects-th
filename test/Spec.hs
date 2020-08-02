@@ -22,10 +22,13 @@ import Language.Haskell.TH (runQ)
 import System.IO
 import Test.Tasty
 import Test.Tasty.HUnit
+import Data.Kind (Type)
 
+data Go (m :: Type -> Type) k where
+  App :: String -> Go m ()
+
+makeSmartConstructors ''Go
 makeSmartConstructors ''State
-makeSmartConstructors ''Reader
-makeSmartConstructors ''Writer
 
 -- Need to ensure that if a constructor introduces a new type variable,
 -- that it is introduced in the corresponding invocation. The question is

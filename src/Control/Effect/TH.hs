@@ -124,4 +124,4 @@ makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
       invocation = foldl' appT (conT typeName) (fmap (varT . getTyVar) rest)
       hasConstraint = [t|Has $(parensT invocation) $(varT (mkName "sig")) $(monadName)|]
       folded = foldr (\a b -> arrowT `appT` pure a `appT` b) (monadName `appT` pure returnType) ctorArgs
-   in TH.sigD functionName (TH.forallT (extraTyVars ++ [sigVar]) (TH.cxt [hasConstraint]) folded)
+   in TH.sigD functionName (TH.forallT (rest ++ [monadTypeVar, sigVar]) (TH.cxt [hasConstraint]) folded)
