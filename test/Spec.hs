@@ -27,8 +27,16 @@ import Data.Kind (Type)
 data Go (m :: Type -> Type) k where
   App :: String -> Go m ()
 
+data Same (m :: Type -> Type) k where
+  Same :: Same m ()
+
+data Kinded (s :: Type) (m :: Type -> Type) k where
+  Kinded :: s -> Kinded s m ()
+
 makeSmartConstructors ''Go
 makeSmartConstructors ''State
+makeSmartConstructors ''Same
+makeSmartConstructors ''Kinded
 
 -- Need to ensure that if a constructor introduces a new type variable,
 -- that it is introduced in the corresponding invocation. The question is

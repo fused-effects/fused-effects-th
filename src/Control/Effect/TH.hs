@@ -115,8 +115,8 @@ makeClause PerDecl {..} = TH.clause pats body []
 
 makeSignature :: PerDecl -> TH.DecQ
 makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
-  let sigVar = last effectTypeVars
-      rest = init effectTypeVars
+  let sigVar = last extraTyVars
+      rest = init extraTyVars
       getTyVar = \case
         TH.PlainTV t -> t
         TH.KindedTV t _ -> t
