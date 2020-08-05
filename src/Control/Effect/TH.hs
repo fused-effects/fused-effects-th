@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -18,8 +19,6 @@ import Language.Haskell.TH as TH
 
 data PerEffect = PerEffect
   { typeName :: TH.Name,
-    effectTypeVars :: [TH.TyVarBndr],
-    monadTypeVar :: TH.TyVarBndr,
     forallConstructor :: TH.Con
   }
 
@@ -65,15 +64,11 @@ data PerDecl = PerDecl
 --
 makeSmartConstructors :: Name -> TH.DecsQ
 makeSmartConstructors typ =
+  -- Lookup the provided type name
   TH.reify typ >>= \case
-    TH.TyConI (TH.DataD _ctx typeName tyvars _kind cons _derive) -> do
-      -- Pick out the `m` argument. We can drop `k` on the floor.
-      (effectTypeVarsWithoutSig, monadTypeVar) <- case reverse tyvars of
-        _cont : monad : rest -> pure (reverse rest, monad)
-        _ -> fail ("Effect types need at least two type arguments: a monad `m` and continuation `k`.")
-      -- Continue, recording the various relevant data from the type in question.
-      let effectTypeVars = effectTypeVarsWithoutSig ++ [TH.PlainTV (mkName "sig")]
-      join <$> traverse (\forallConstructor -> makeDeclaration PerEffect {..}) cons
+    -- If it's a type constructor, record its type name
+    TH.TyConI (TH.DataD _ctx typeName _tyvars _kind constructors _derive) ->
+      join <$> traverse (\forallConstructor -> makeDeclaration PerEffect {typeName, forallConstructor}) constructors
     other -> fail ("Can't generate definitions for a non-data-constructor: " <> pprint other)
 
 makeDeclaration :: PerEffect -> TH.DecsQ
@@ -115,13 +110,14 @@ makeClause PerDecl {..} = TH.clause pats body []
 
 makeSignature :: PerDecl -> TH.DecQ
 makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
-  let sigVar = last extraTyVars
+  let sigVar = plainTV (mkName "sig")
       rest = init extraTyVars
+      monadTV = last extraTyVars
       getTyVar = \case
         TH.PlainTV t -> t
         TH.KindedTV t _ -> t
-      monadName = varT (getTyVar monadTypeVar)
+      monadName = varT (getTyVar monadTV)
       invocation = foldl' appT (conT typeName) (fmap (varT . getTyVar) rest)
       hasConstraint = [t|Has $(parensT invocation) $(varT (mkName "sig")) $(monadName)|]
       folded = foldr (\a b -> arrowT `appT` pure a `appT` b) (monadName `appT` pure returnType) ctorArgs
-   in TH.sigD functionName (TH.forallT (rest ++ [monadTypeVar, sigVar]) (TH.cxt [hasConstraint]) folded)
+   in TH.sigD functionName (TH.forallT (rest ++ [monadTV, sigVar]) (TH.cxt [hasConstraint]) folded)

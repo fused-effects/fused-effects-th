@@ -33,6 +33,7 @@ data Same (m :: Type -> Type) k where
 data Kinded (s :: Type) (m :: Type -> Type) k where
   Kinded :: s -> Kinded s m ()
 
+
 makeSmartConstructors ''Go
 makeSmartConstructors ''State
 makeSmartConstructors ''Same
