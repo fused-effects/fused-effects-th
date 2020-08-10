@@ -19,7 +19,8 @@ import Language.Haskell.TH as TH
 
 data PerEffect = PerEffect
   { typeName :: TH.Name,
-    forallConstructor :: TH.Con
+    forallConstructor :: TH.Con,
+    effectTyVars :: [TyVarBndr]
   }
 
 data PerDecl = PerDecl
@@ -68,8 +69,8 @@ makeSmartConstructors typ =
   -- Lookup the provided type name
   TH.reify typ >>= \case
     -- If it's a type constructor, record its type name
-    TH.TyConI (TH.DataD _ctx typeName _tyvars _kind constructors _derive) ->
-      join <$> traverse (\forallConstructor -> makeDeclaration PerEffect {typeName, forallConstructor}) constructors
+    TH.TyConI (TH.DataD _ctx typeName effectTyVars _kind constructors _derive) ->
+      join <$> traverse (\forallConstructor -> makeDeclaration PerEffect {typeName, forallConstructor, effectTyVars}) constructors
     other -> fail ("Can't generate definitions for a non-data-constructor: " <> pprint other)
 
 makeDeclaration :: PerEffect -> TH.DecsQ
@@ -118,7 +119,7 @@ makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
         TH.PlainTV t -> t
         TH.KindedTV t _ -> t
       monadName = varT (getTyVar monadTV)
-      invocation = foldl' appT (conT typeName) (fmap (varT . getTyVar) rest)
+      invocation = foldl' appT (conT typeName) (fmap (varT . getTyVar) (take (length effectTyVars - 2) rest))
       hasConstraint = [t|Has $(parensT invocation) $(varT (mkName "sig")) $(monadName)|]
       folded = foldr (\a b -> arrowT `appT` pure a `appT` b) (monadName `appT` pure returnType) ctorArgs
    in TH.sigD functionName (TH.forallT (rest ++ [monadTV, sigVar]) (TH.cxt (hasConstraint : fmap pure extraConstraints)) folded)
