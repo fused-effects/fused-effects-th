@@ -28,7 +28,8 @@ data PerDecl = PerDecl
     ctorArgs :: [TH.Type],
     returnType :: TH.Type,
     perEffect :: PerEffect,
-    extraTyVars :: [TyVarBndr]
+    extraTyVars :: [TyVarBndr],
+    extraConstraints :: [TH.Type]
   }
 
 -- | Given an effect type, this splice generates functions that create per-constructor request functions.
@@ -73,9 +74,9 @@ makeSmartConstructors typ =
 
 makeDeclaration :: PerEffect -> TH.DecsQ
 makeDeclaration perEffect@PerEffect {..} = do
-  (names, ctorArgs, returnWithResult, extraTyVars) <- case forallConstructor of
-    TH.ForallC vars _ctx (TH.GadtC names bangtypes returnType) ->
-      pure (names, fmap snd bangtypes, returnType, vars)
+  (names, ctorArgs, extraConstraints, returnWithResult, extraTyVars) <- case forallConstructor of
+    TH.ForallC vars ctx (TH.GadtC names bangtypes returnType) ->
+      pure (names, fmap snd bangtypes, ctx, returnType, vars)
     _ ->
       fail ("BUG: expected forall-qualified constructor, but didn't get one")
   returnType <- case returnWithResult of
@@ -120,4 +121,4 @@ makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
       invocation = foldl' appT (conT typeName) (fmap (varT . getTyVar) rest)
       hasConstraint = [t|Has $(parensT invocation) $(varT (mkName "sig")) $(monadName)|]
       folded = foldr (\a b -> arrowT `appT` pure a `appT` b) (monadName `appT` pure returnType) ctorArgs
-   in TH.sigD functionName (TH.forallT (rest ++ [monadTV, sigVar]) (TH.cxt [hasConstraint]) folded)
+   in TH.sigD functionName (TH.forallT (rest ++ [monadTV, sigVar]) (TH.cxt (hasConstraint : fmap pure extraConstraints)) folded)

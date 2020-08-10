@@ -33,11 +33,14 @@ data Same (m :: Type -> Type) k where
 data Kinded (s :: Type) (m :: Type -> Type) k where
   Kinded :: s -> Kinded s m ()
 
+data Constrained (m :: Type -> Type) k where
+  Shown :: Show a => a -> Constrained m a
 
 makeSmartConstructors ''Go
 makeSmartConstructors ''State
 makeSmartConstructors ''Same
 makeSmartConstructors ''Kinded
+makeSmartConstructors ''Constrained
 
 -- Need to ensure that if a constructor introduces a new type variable,
 -- that it is introduced in the corresponding invocation. The question is
