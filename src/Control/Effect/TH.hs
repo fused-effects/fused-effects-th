@@ -95,15 +95,16 @@ makeDeclaration perEffect@PerEffect {..} = do
           x : xs -> toLower x : xs
           [] -> []
         functionName = TH.mkName . downcase . TH.nameBase $ ctorName
-    let decl = PerDecl {
-          ctorName = ctorName,
-          functionName = functionName,
-          ctorArgs = ctorArgs,
-          gadtReturnType = pure returnType,
-          perEffect = perEffect,
-          extraTyVars = extraTyVars,
-          ctorConstraints = fmap pure constraints
-          }
+    let decl =
+          PerDecl
+            { ctorName = ctorName,
+              functionName = functionName,
+              ctorArgs = ctorArgs,
+              gadtReturnType = pure returnType,
+              perEffect = perEffect,
+              extraTyVars = extraTyVars,
+              ctorConstraints = fmap pure constraints
+            }
     sign <- makeSignature decl
     func <- makeFunction decl
     prag <- makePragma decl
