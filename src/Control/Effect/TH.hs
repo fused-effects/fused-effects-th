@@ -30,10 +30,10 @@ data PerDecl = PerDecl
   { ctorName :: TH.Name,
     functionName :: TH.Name,
     ctorArgs :: [TH.Type],
-    returnType :: TH.Type,
+    gadtReturnType :: TH.TypeQ,
     perEffect :: PerEffect,
     extraTyVars :: [TH.TyVarBndr],
-    extraConstraints :: [TH.Type]
+    ctorConstraints :: [TH.TypeQ]
   }
 
 -- | Given an effect type, this splice generates functions that create per-constructor request functions.
@@ -84,7 +84,8 @@ makeSmartConstructors typ =
 
 makeDeclaration :: PerEffect -> TH.DecsQ
 makeDeclaration perEffect@PerEffect {..} = do
-  (names, ctorArgs, extraConstraints, returnWithResult, extraTyVars) <- case forallConstructor of
+  -- Start by extracting the relevant parts of this particular constructor.
+  (names, ctorArgs, constraints, returnWithResult, extraTyVars) <- case forallConstructor of
     TH.ForallC vars ctx (TH.GadtC names bangtypes returnType) ->
       pure (names, fmap snd bangtypes, ctx, returnType, vars)
     _ ->
@@ -101,10 +102,10 @@ makeDeclaration perEffect@PerEffect {..} = do
           ctorName = ctorName,
           functionName = functionName,
           ctorArgs = ctorArgs,
-          returnType = returnType,
+          gadtReturnType = pure returnType,
           perEffect = perEffect,
           extraTyVars = extraTyVars,
-          extraConstraints = extraConstraints
+          ctorConstraints = fmap pure constraints
           }
     sign <- makeSignature decl
     func <- makeFunction decl
@@ -130,11 +131,11 @@ makeClause PerDecl {..} = TH.clause pats body []
 makeSignature :: PerDecl -> TH.DecQ
 makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
   let sigVar = plainTV (mkName "sig")
-      rest = init extraTyVars
-      monadTV = last extraTyVars
+      (rest, monadTV) = (init extraTyVars, last extraTyVars)
       getTyVar = view (name @TH.TyVarBndr)
       monadName = varT (getTyVar monadTV)
       invocation = foldl' appT effectType (fmap (varT . getTyVar) (take (effectTyVarCount - 2) rest))
       hasConstraint = [t|Has $(parensT invocation) $(varT (mkName "sig")) $(monadName)|]
-      foldedSig = foldr (\a b -> arrowT `appT` pure a `appT` b) (monadName `appT` pure returnType) ctorArgs
-   in TH.sigD functionName (TH.forallT (rest ++ [monadTV, sigVar]) (TH.cxt (hasConstraint : fmap pure extraConstraints)) foldedSig)
+      foldedSig = foldr (\a b -> arrowT `appT` pure a `appT` b) (monadName `appT` gadtReturnType) ctorArgs
+      allConstraints = TH.cxt (hasConstraint : ctorConstraints)
+   in TH.sigD functionName (TH.forallT (rest ++ [monadTV, sigVar]) allConstraints foldedSig)
