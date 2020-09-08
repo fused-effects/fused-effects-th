@@ -88,6 +88,8 @@ makeDeclaration perEffect@PerEffect {..} = do
       pure (names, fmap snd bangtypes, ctx, final, vars)
     _ ->
       fail ("BUG: expected forall-qualified constructor, but didn't get one")
+  -- Then iterate over the names of the constructors, emitting an injected
+  -- method per name.
   fmap join . for names $ \ctorName -> do
     let downcase =
           mkName . \case
@@ -123,7 +125,9 @@ makeClause PerDecl {..} = TH.clause pats body []
   where
     body = TH.normalB [e|send ($(applies))|]
     pats = fmap TH.varP names
+    -- Glue together the parameter to 'send', fully applied
     applies = foldl' (\e n -> e `TH.appE` TH.varE n) (TH.conE ctorName) names
+    -- A source of a, b, c... names for function parameters.
     names = fmap (mkName . pure) (take (length ctorArgs) ['a' .. 'z'])
 
 makeSignature :: PerDecl -> TH.DecQ
@@ -134,8 +138,11 @@ makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
         TH.PlainTV n -> n
         TH.KindedTV n _ -> n
       monadName = getTyVar monadTV
+      -- Build the parameter to Has by consulting the number of required type parameters.
       invocation = foldl' appT effectType (fmap getTyVar (take (effectTyVarCount - 2) rest))
       hasConstraint = [t|Has ($(invocation)) $(varT sigVar) $(monadName)|]
+      -- Build the type signature by folding with (->) over the function arguments as needed.
       foldedSig = foldr (\a b -> arrowT `appT` a `appT` b) (monadName `appT` gadtReturnType) ctorArgs
+      -- Glue together the Has and the per-constructor constraints.
       allConstraints = TH.cxt (hasConstraint : ctorConstraints)
    in TH.sigD functionName (TH.forallT (rest ++ [monadTV, TH.plainTV sigVar]) allConstraints foldedSig)
