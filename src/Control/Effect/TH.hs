@@ -95,12 +95,10 @@ makeDeclaration perEffect@PerEffect {..} = do
           mkName . \case
             x : xs -> toLower x : xs
             [] -> []
-        functionName =
-          downcase . TH.nameBase $ ctorName
         decl =
           PerDecl
             { ctorName = ctorName,
-              functionName = functionName,
+              functionName = downcase . TH.nameBase $ ctorName,
               ctorArgs = fmap pure ctorArgs,
               gadtReturnType = pure returnType,
               perEffect = perEffect,
