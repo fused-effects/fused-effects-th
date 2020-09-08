@@ -45,8 +45,6 @@ common common-options
 
 library
   import:              common-options
-  build-depends:       optics-core ^>= 0.3
-                     , template-haskell-optics ^>= 0.1
   hs-source-dirs:      src
   exposed-modules:     Control.Effect.TH
 

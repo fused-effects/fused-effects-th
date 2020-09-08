@@ -18,8 +18,6 @@ import Data.Monoid (Ap (..))
 import Data.Traversable
 import Language.Haskell.TH (appT, arrowT, mkName, varT)
 import qualified Language.Haskell.TH as TH
-import Language.Haskell.TH.Optics
-import Optics.Core
 
 data PerEffect = PerEffect
   { effectType :: TH.TypeQ,
@@ -133,7 +131,9 @@ makeSignature :: PerDecl -> TH.DecQ
 makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
   let sigVar = mkName "sig"
       (rest, monadTV) = (init extraTyVars, last extraTyVars)
-      getTyVar = varT . view (name @TH.TyVarBndr)
+      getTyVar = varT . \case
+        TH.PlainTV n -> n
+        TH.KindedTV n _ -> n
       monadName = getTyVar monadTV
       invocation = foldl' appT effectType (fmap getTyVar (take (effectTyVarCount - 2) rest))
       hasConstraint = [t|Has ($(invocation)) $(varT sigVar) $(monadName)|]
