@@ -72,7 +72,8 @@ makeSmartConstructors typ =
   TH.reify typ >>= \case
     -- If it's a type constructor, record its type name
     TH.TyConI (TH.DataD _ctx typeName effectTyVars _kind constructors _derive) ->
-      join <$> traverse (\forallConstructor -> makeDeclaration PerEffect {typeName, forallConstructor, effectTyVars}) constructors
+      let perEffect forallConstructor = PerEffect {typeName, forallConstructor, effectTyVars}
+       in join <$> traverse (makeDeclaration . perEffect) constructors
     other -> fail ("Can't generate definitions for a non-data-constructor: " <> pprint other)
 
 makeDeclaration :: PerEffect -> TH.DecsQ
