@@ -1,9 +1,9 @@
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
 
 -- | Defines splices that cut down on boilerplate associated with declaring new effects.
 module Control.Effect.TH
@@ -16,9 +16,9 @@ import Control.Monad (join)
 import Data.Char (toLower)
 import Data.Foldable
 import Data.Traversable
-import Optics.Core
-import Language.Haskell.TH.Optics
 import Language.Haskell.TH as TH
+import Language.Haskell.TH.Optics
+import Optics.Core
 
 data PerEffect = PerEffect
   { typeName :: TH.Name,
@@ -66,7 +66,6 @@ data PerDecl = PerDecl
 --
 -- The type variables in each declared function signature will appear in the order
 -- they were defined in the effect type.
---
 makeSmartConstructors :: Name -> TH.DecsQ
 makeSmartConstructors typ =
   -- Lookup the provided type name
