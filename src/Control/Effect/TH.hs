@@ -2,7 +2,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeApplications #-}
 
 -- | Defines splices that cut down on boilerplate associated with declaring new effects.
 module Control.Effect.TH
