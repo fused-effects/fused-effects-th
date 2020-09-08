@@ -1,5 +1,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -15,6 +16,8 @@ import Control.Monad (join)
 import Data.Char (toLower)
 import Data.Foldable
 import Data.Traversable
+import Optics.Core
+import Language.Haskell.TH.Optics
 import Language.Haskell.TH as TH
 
 data PerEffect = PerEffect
@@ -115,11 +118,9 @@ makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
   let sigVar = plainTV (mkName "sig")
       rest = init extraTyVars
       monadTV = last extraTyVars
-      getTyVar = \case
-        TH.PlainTV t -> t
-        TH.KindedTV t _ -> t
+      getTyVar = view (name @TH.TyVarBndr)
       monadName = varT (getTyVar monadTV)
       invocation = foldl' appT (conT typeName) (fmap (varT . getTyVar) (take (length effectTyVars - 2) rest))
       hasConstraint = [t|Has $(parensT invocation) $(varT (mkName "sig")) $(monadName)|]
-      folded = foldr (\a b -> arrowT `appT` pure a `appT` b) (monadName `appT` pure returnType) ctorArgs
-   in TH.sigD functionName (TH.forallT (rest ++ [monadTV, sigVar]) (TH.cxt (hasConstraint : fmap pure extraConstraints)) folded)
+      foldedSig = foldr (\a b -> arrowT `appT` pure a `appT` b) (monadName `appT` pure returnType) ctorArgs
+   in TH.sigD functionName (TH.forallT (rest ++ [monadTV, sigVar]) (TH.cxt (hasConstraint : fmap pure extraConstraints)) foldedSig)
