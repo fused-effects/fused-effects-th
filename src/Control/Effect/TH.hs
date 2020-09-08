@@ -1,5 +1,4 @@
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -98,7 +97,15 @@ makeDeclaration perEffect@PerEffect {..} = do
           x : xs -> toLower x : xs
           [] -> []
         functionName = TH.mkName . downcase . TH.nameBase $ ctorName
-    let decl = PerDecl {..}
+    let decl = PerDecl {
+          ctorName = ctorName,
+          functionName = functionName,
+          ctorArgs = ctorArgs,
+          returnType = returnType,
+          perEffect = perEffect,
+          extraTyVars = extraTyVars,
+          extraConstraints = extraConstraints
+          }
     sign <- makeSignature decl
     func <- makeFunction decl
     prag <- makePragma decl
