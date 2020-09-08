@@ -85,14 +85,11 @@ makeSmartConstructors typ =
 makeDeclaration :: PerEffect -> TH.DecsQ
 makeDeclaration perEffect@PerEffect {..} = do
   -- Start by extracting the relevant parts of this particular constructor.
-  (names, ctorArgs, constraints, returnWithResult, extraTyVars) <- case forallConstructor of
-    TH.ForallC vars ctx (TH.GadtC names bangtypes returnType) ->
-      pure (names, fmap snd bangtypes, ctx, returnType, vars)
+  (names, ctorArgs, constraints, returnType, extraTyVars) <- case forallConstructor of
+    TH.ForallC vars ctx (TH.GadtC names bangtypes (AppT _ final)) ->
+      pure (names, fmap snd bangtypes, ctx, final, vars)
     _ ->
       fail ("BUG: expected forall-qualified constructor, but didn't get one")
-  returnType <- case returnWithResult of
-    AppT _ final -> pure final
-    _ -> fail ("BUG: Couldn't get a return type out of " <> pprint returnWithResult)
   fmap join . for names $ \ctorName -> do
     let downcase = \case
           x : xs -> toLower x : xs
