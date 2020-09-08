@@ -15,15 +15,16 @@ import Control.Algebra
 import Control.Monad (join)
 import Data.Char (toLower)
 import Data.Foldable
+import Data.Monoid (Ap (..))
 import Data.Traversable
 import Language.Haskell.TH as TH
 import Language.Haskell.TH.Optics
 import Optics.Core
 
 data PerEffect = PerEffect
-  { typeName :: TH.Name,
+  { typeName :: TH.TypeQ,
     forallConstructor :: TH.Con,
-    effectTyVars :: [TyVarBndr]
+    effectTyVarCount :: Int
   }
 
 data PerDecl = PerDecl
@@ -32,7 +33,7 @@ data PerDecl = PerDecl
     ctorArgs :: [TH.Type],
     returnType :: TH.Type,
     perEffect :: PerEffect,
-    extraTyVars :: [TyVarBndr],
+    extraTyVars :: [TH.TyVarBndr],
     extraConstraints :: [TH.Type]
   }
 
@@ -68,12 +69,18 @@ data PerDecl = PerDecl
 -- they were defined in the effect type.
 makeSmartConstructors :: Name -> TH.DecsQ
 makeSmartConstructors typ =
-  -- Lookup the provided type name
+  -- Lookup the provided type name.
   TH.reify typ >>= \case
-    -- If it's a type constructor, record its type name
-    TH.TyConI (TH.DataD _ctx typeName effectTyVars _kind constructors _derive) ->
-      let perEffect forallConstructor = PerEffect {typeName, forallConstructor, effectTyVars}
-       in join <$> traverse (makeDeclaration . perEffect) constructors
+    -- If it's a type constructor, record its type name.
+    TH.TyConI (TH.DataD _ctx tn tvs _kind constructors _derive) ->
+      let perEffect ctor =
+            PerEffect
+              { typeName = TH.conT tn,
+                forallConstructor = ctor,
+                effectTyVarCount = length tvs
+              }
+       in getAp (foldMap (Ap . makeDeclaration . perEffect) constructors)
+    -- Die otherwise.
     other -> fail ("Can't generate definitions for a non-data-constructor: " <> pprint other)
 
 makeDeclaration :: PerEffect -> TH.DecsQ
@@ -120,7 +127,7 @@ makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
       monadTV = last extraTyVars
       getTyVar = view (name @TH.TyVarBndr)
       monadName = varT (getTyVar monadTV)
-      invocation = foldl' appT (conT typeName) (fmap (varT . getTyVar) (take (length effectTyVars - 2) rest))
+      invocation = foldl' appT typeName (fmap (varT . getTyVar) (take (effectTyVarCount - 2) rest))
       hasConstraint = [t|Has $(parensT invocation) $(varT (mkName "sig")) $(monadName)|]
       foldedSig = foldr (\a b -> arrowT `appT` pure a `appT` b) (monadName `appT` pure returnType) ctorArgs
    in TH.sigD functionName (TH.forallT (rest ++ [monadTV, sigVar]) (TH.cxt (hasConstraint : fmap pure extraConstraints)) foldedSig)
