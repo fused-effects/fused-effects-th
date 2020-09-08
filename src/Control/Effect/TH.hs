@@ -20,18 +20,18 @@ import qualified Language.Haskell.TH as TH
 
 data PerEffect = PerEffect
   { effectType :: TH.TypeQ,
-    forallConstructor :: TH.Con,
-    effectTyVarCount :: Int
+    effectTyVarCount :: Int,
+    forallConstructor :: TH.Con
   }
 
 data PerDecl = PerDecl
-  { ctorName :: TH.Name,
+  { ctorArgs :: [TH.TypeQ],
+    ctorConstraints :: [TH.TypeQ],
+    ctorName :: TH.Name,
+    ctorTyVars :: [TH.TyVarBndr],
     functionName :: TH.Name,
-    ctorArgs :: [TH.TypeQ],
     gadtReturnType :: TH.TypeQ,
-    perEffect :: PerEffect,
-    extraTyVars :: [TH.TyVarBndr],
-    ctorConstraints :: [TH.TypeQ]
+    perEffect :: PerEffect
   }
 
 -- | Given an effect type, this splice generates functions that create per-constructor request functions.
@@ -83,7 +83,7 @@ makeSmartConstructors typ =
 makeDeclaration :: PerEffect -> TH.DecsQ
 makeDeclaration perEffect@PerEffect {..} = do
   -- Start by extracting the relevant parts of this particular constructor.
-  (names, ctorArgs, constraints, returnType, extraTyVars) <- case forallConstructor of
+  (names, ctorArgs, constraints, returnType, ctorTyVars) <- case forallConstructor of
     TH.ForallC vars ctx (TH.GadtC names bangtypes (TH.AppT _ final)) ->
       pure (names, fmap snd bangtypes, ctx, final, vars)
     _ ->
@@ -104,7 +104,7 @@ makeDeclaration perEffect@PerEffect {..} = do
               ctorArgs = fmap pure ctorArgs,
               gadtReturnType = pure returnType,
               perEffect = perEffect,
-              extraTyVars = extraTyVars,
+              ctorTyVars = ctorTyVars,
               ctorConstraints = fmap pure constraints
             }
     sign <- makeSignature decl
@@ -133,7 +133,7 @@ makeClause PerDecl {..} = TH.clause pats body []
 makeSignature :: PerDecl -> TH.DecQ
 makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
   let sigVar = mkName "sig"
-      (rest, monadTV) = (init extraTyVars, last extraTyVars)
+      (rest, monadTV) = (init ctorTyVars, last ctorTyVars)
       getTyVar = varT . \case
         TH.PlainTV n -> n
         TH.KindedTV n _ -> n
