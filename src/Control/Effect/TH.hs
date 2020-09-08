@@ -92,11 +92,13 @@ makeDeclaration perEffect@PerEffect {..} = do
     _ ->
       fail ("BUG: expected forall-qualified constructor, but didn't get one")
   fmap join . for names $ \ctorName -> do
-    let downcase = \case
-          x : xs -> toLower x : xs
-          [] -> []
-        functionName = TH.mkName . downcase . TH.nameBase $ ctorName
-    let decl =
+    let downcase =
+          mkName . \case
+            x : xs -> toLower x : xs
+            [] -> []
+        functionName =
+          downcase . TH.nameBase $ ctorName
+        decl =
           PerDecl
             { ctorName = ctorName,
               functionName = functionName,
