@@ -22,7 +22,7 @@ import Language.Haskell.TH.Optics
 import Optics.Core
 
 data PerEffect = PerEffect
-  { typeName :: TH.TypeQ,
+  { effectType :: TH.TypeQ,
     forallConstructor :: TH.Con,
     effectTyVarCount :: Int
   }
@@ -75,7 +75,7 @@ makeSmartConstructors typ =
     TH.TyConI (TH.DataD _ctx tn tvs _kind constructors _derive) ->
       let perEffect ctor =
             PerEffect
-              { typeName = TH.conT tn,
+              { effectType = TH.conT tn,
                 forallConstructor = ctor,
                 effectTyVarCount = length tvs
               }
@@ -127,7 +127,7 @@ makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
       monadTV = last extraTyVars
       getTyVar = view (name @TH.TyVarBndr)
       monadName = varT (getTyVar monadTV)
-      invocation = foldl' appT typeName (fmap (varT . getTyVar) (take (effectTyVarCount - 2) rest))
+      invocation = foldl' appT effectType (fmap (varT . getTyVar) (take (effectTyVarCount - 2) rest))
       hasConstraint = [t|Has $(parensT invocation) $(varT (mkName "sig")) $(monadName)|]
       foldedSig = foldr (\a b -> arrowT `appT` pure a `appT` b) (monadName `appT` pure returnType) ctorArgs
    in TH.sigD functionName (TH.forallT (rest ++ [monadTV, sigVar]) (TH.cxt (hasConstraint : fmap pure extraConstraints)) foldedSig)
