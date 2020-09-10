@@ -70,15 +70,11 @@ makeSmartConstructors typ =
   TH.reify typ >>= \case
     -- If it's a type constructor, record its type name.
     TH.TyConI (TH.DataD _ctx tn tvs _kind constructors _derive) ->
-      let perEffect ctor =
-            PerEffect
-              { effectType = TH.conT tn,
-                forallConstructor = ctor,
-                effectTyVarCount = length tvs
-              }
+      let perEffect = PerEffect (TH.conT tn) (length tvs)
        in getAp (foldMap (Ap . makeDeclaration . perEffect) constructors)
     -- Die otherwise.
-    other -> fail ("Can't generate definitions for a non-data-constructor: " <> TH.pprint other)
+    other ->
+      fail ("Can't generate definitions for a non-data-constructor: " <> TH.pprint other)
 
 makeDeclaration :: PerEffect -> TH.DecsQ
 makeDeclaration perEffect@PerEffect {..} = do
