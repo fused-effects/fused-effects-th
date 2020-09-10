@@ -92,7 +92,7 @@ makeDeclaration perEffect@PerEffect {..} = do
   -- method per name.
   fmap join . for names $ \ctorName -> do
     let downcase (x : xs) = mkName (toLower x : xs)
-        downcase [] = mkName []
+        downcase [] = error "attempted to downcase empty name"
         decl =
           PerDecl
             { ctorName = ctorName,
