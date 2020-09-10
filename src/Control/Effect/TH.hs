@@ -91,10 +91,8 @@ makeDeclaration perEffect@PerEffect {..} = do
   -- Then iterate over the names of the constructors, emitting an injected
   -- method per name.
   fmap join . for names $ \ctorName -> do
-    let downcase =
-          mkName . \case
-            x : xs -> toLower x : xs
-            [] -> []
+    let downcase (x : xs) = mkName (toLower x : xs)
+        downcase [] = mkName []
         decl =
           PerDecl
             { ctorName = ctorName,
