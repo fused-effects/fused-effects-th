@@ -1,6 +1,6 @@
 cabal-version:       2.4
 name:                fused-effects-th
-version:             0.1.0.1
+version:             0.1.0.2
 synopsis:            Template Haskell helpers for fused-effects.
 description:         This package provides Template Haskell splices that wrap the smart constructors needed for declaring new effects when using the fused-effects effect system.
 homepage:            https://github.com/fused-effects/fused-effects-th

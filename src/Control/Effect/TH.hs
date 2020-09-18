@@ -1,4 +1,3 @@
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -14,23 +13,25 @@ import Control.Algebra
 import Control.Monad (join)
 import Data.Char (toLower)
 import Data.Foldable
+import Data.Monoid (Ap (..))
 import Data.Traversable
-import Language.Haskell.TH as TH
+import Language.Haskell.TH (appT, arrowT, mkName, varT)
+import qualified Language.Haskell.TH as TH
 
 data PerEffect = PerEffect
-  { typeName :: TH.Name,
-    forallConstructor :: TH.Con,
-    effectTyVars :: [TyVarBndr]
+  { effectType :: TH.TypeQ,
+    effectTyVarCount :: Int,
+    forallConstructor :: TH.Con
   }
 
 data PerDecl = PerDecl
-  { ctorName :: TH.Name,
+  { ctorArgs :: [TH.TypeQ],
+    ctorConstraints :: [TH.TypeQ],
+    ctorName :: TH.Name,
+    ctorTyVars :: [TH.TyVarBndr],
     functionName :: TH.Name,
-    ctorArgs :: [TH.Type],
-    returnType :: TH.Type,
-    perEffect :: PerEffect,
-    extraTyVars :: [TyVarBndr],
-    extraConstraints :: [TH.Type]
+    gadtReturnType :: TH.TypeQ,
+    perEffect :: PerEffect
   }
 
 -- | Given an effect type, this splice generates functions that create per-constructor request functions.
@@ -63,32 +64,41 @@ data PerDecl = PerDecl
 --
 -- The type variables in each declared function signature will appear in the order
 -- they were defined in the effect type.
---
-makeSmartConstructors :: Name -> TH.DecsQ
+makeSmartConstructors :: TH.Name -> TH.DecsQ
 makeSmartConstructors typ =
-  -- Lookup the provided type name
+  -- Lookup the provided type name.
   TH.reify typ >>= \case
-    -- If it's a type constructor, record its type name
-    TH.TyConI (TH.DataD _ctx typeName effectTyVars _kind constructors _derive) ->
-      join <$> traverse (\forallConstructor -> makeDeclaration PerEffect {typeName, forallConstructor, effectTyVars}) constructors
-    other -> fail ("Can't generate definitions for a non-data-constructor: " <> pprint other)
+    -- If it's a type constructor, record its type name.
+    TH.TyConI (TH.DataD _ctx tn tvs _kind constructors _derive) ->
+      let perEffect = PerEffect (TH.conT tn) (length tvs)
+       in getAp (foldMap (Ap . makeDeclaration . perEffect) constructors)
+    -- Die otherwise.
+    other ->
+      fail ("Can't generate definitions for a non-data-constructor: " <> TH.pprint other)
 
 makeDeclaration :: PerEffect -> TH.DecsQ
 makeDeclaration perEffect@PerEffect {..} = do
-  (names, ctorArgs, extraConstraints, returnWithResult, extraTyVars) <- case forallConstructor of
-    TH.ForallC vars ctx (TH.GadtC names bangtypes returnType) ->
-      pure (names, fmap snd bangtypes, ctx, returnType, vars)
+  -- Start by extracting the relevant parts of this particular constructor.
+  (names, ctorArgs, constraints, returnType, ctorTyVars) <- case forallConstructor of
+    TH.ForallC vars ctx (TH.GadtC names bangtypes (TH.AppT _ final)) ->
+      pure (names, fmap snd bangtypes, ctx, final, vars)
     _ ->
       fail ("BUG: expected forall-qualified constructor, but didn't get one")
-  returnType <- case returnWithResult of
-    AppT _ final -> pure final
-    _ -> fail ("BUG: Couldn't get a return type out of " <> pprint returnWithResult)
+  -- Then iterate over the names of the constructors, emitting an injected
+  -- method per name.
   fmap join . for names $ \ctorName -> do
-    let downcase = \case
-          x : xs -> toLower x : xs
-          [] -> []
-        functionName = TH.mkName . downcase . TH.nameBase $ ctorName
-    let decl = PerDecl {..}
+    let downcase (x : xs) = mkName (toLower x : xs)
+        downcase [] = error "attempted to downcase empty name"
+        decl =
+          PerDecl
+            { ctorName = ctorName,
+              functionName = downcase . TH.nameBase $ ctorName,
+              ctorArgs = fmap pure ctorArgs,
+              gadtReturnType = pure returnType,
+              perEffect = perEffect,
+              ctorTyVars = ctorTyVars,
+              ctorConstraints = fmap pure constraints
+            }
     sign <- makeSignature decl
     func <- makeFunction decl
     prag <- makePragma decl
@@ -98,28 +108,34 @@ makePragma :: PerDecl -> TH.DecQ
 makePragma PerDecl {..} =
   TH.pragInlD functionName TH.Inlinable TH.FunLike TH.AllPhases
 
-makeFunction :: PerDecl -> Q Dec
+makeFunction :: PerDecl -> TH.DecQ
 makeFunction d =
   TH.funD (functionName d) [makeClause d]
 
-makeClause :: PerDecl -> ClauseQ
+makeClause :: PerDecl -> TH.ClauseQ
 makeClause PerDecl {..} = TH.clause pats body []
   where
     body = TH.normalB [e|send ($(applies))|]
     pats = fmap TH.varP names
-    applies = foldl' (\e n -> e `appE` varE n) (conE ctorName) names
+    -- Glue together the parameter to 'send', fully applied
+    applies = foldl' (\e n -> e `TH.appE` TH.varE n) (TH.conE ctorName) names
+    -- A source of a, b, c... names for function parameters.
     names = fmap (mkName . pure) (take (length ctorArgs) ['a' .. 'z'])
 
 makeSignature :: PerDecl -> TH.DecQ
 makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
-  let sigVar = plainTV (mkName "sig")
-      rest = init extraTyVars
-      monadTV = last extraTyVars
-      getTyVar = \case
-        TH.PlainTV t -> t
-        TH.KindedTV t _ -> t
-      monadName = varT (getTyVar monadTV)
-      invocation = foldl' appT (conT typeName) (fmap (varT . getTyVar) (take (length effectTyVars - 2) rest))
-      hasConstraint = [t|Has $(parensT invocation) $(varT (mkName "sig")) $(monadName)|]
-      folded = foldr (\a b -> arrowT `appT` pure a `appT` b) (monadName `appT` pure returnType) ctorArgs
-   in TH.sigD functionName (TH.forallT (rest ++ [monadTV, sigVar]) (TH.cxt (hasConstraint : fmap pure extraConstraints)) folded)
+  let sigVar = mkName "sig"
+      (rest, monadTV) = (init ctorTyVars, last ctorTyVars)
+      getTyVar =
+        varT . \case
+          TH.PlainTV n -> n
+          TH.KindedTV n _ -> n
+      monadName = getTyVar monadTV
+      -- Build the parameter to Has by consulting the number of required type parameters.
+      invocation = foldl' appT effectType (fmap getTyVar (take (effectTyVarCount - 2) rest))
+      hasConstraint = [t|Has ($(invocation)) $(varT sigVar) $(monadName)|]
+      -- Build the type signature by folding with (->) over the function arguments as needed.
+      foldedSig = foldr (\a b -> arrowT `appT` a `appT` b) (monadName `appT` gadtReturnType) ctorArgs
+      -- Glue together the Has and the per-constructor constraints.
+      allConstraints = TH.cxt (hasConstraint : ctorConstraints)
+   in TH.sigD functionName (TH.forallT (rest ++ [monadTV, TH.plainTV sigVar]) allConstraints foldedSig)
