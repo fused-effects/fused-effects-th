@@ -13,7 +13,7 @@ import Control.Algebra
 import Control.Monad (join)
 import Data.Char (toLower)
 import Data.Foldable
-import Data.Monoid (Ap (..))
+import Data.Monoid
 import Data.Traversable
 import Language.Haskell.TH (appT, arrowT, mkName, varT)
 import qualified Language.Haskell.TH as TH
