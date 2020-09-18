@@ -21,7 +21,7 @@ source-repository head
   location:            https://github.com/fused-effects/fused-effects-th.git
 
 common common-options
-  build-depends:       base >= 4.9 && < 4.15
+  build-depends:       base >= 4.12 && < 4.15
                      , fused-effects ^>= 1.1
                      , template-haskell >= 2.12 && < 2.17
                      , pretty-simple
