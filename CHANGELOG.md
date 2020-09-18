@@ -3,6 +3,10 @@
 `fused-effects-th` uses [PVP Versioning][1].
 The changelog is available [on GitHub][2].
 
+## 0.1.0.2
+
+* Fix a bug where typeclass constraints on GADT constructors were being ignored.
+
 ## 0.1.0.1
 
 * Fix a bug where explicit kind signatures around a monad type variable

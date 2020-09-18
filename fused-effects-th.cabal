@@ -14,7 +14,9 @@ category:            Control
 build-type:          Simple
 extra-doc-files:     README.md
                      CHANGELOG.md
-tested-with:         GHC == 8.8.3
+tested-with:         GHC == 8.6.5
+                     GHC == 8.8.3
+                     GHC == 8.10.2
 
 source-repository head
   type:                git
