@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -24,11 +25,25 @@ data PerEffect = PerEffect
     forallConstructor :: TH.Con
   }
 
+#if MIN_VERSION_template_haskell(2,17,0)
+type TyVarBinder = TH.TyVarBndrSpec
+#else
+type TyVarBinder = TH.TyVarBndr
+#endif
+
+makeTV :: TH.Name -> TyVarBinder
+#if MIN_VERSION_template_haskell(2,17,0)
+makeTV n = TH.PlainTV n TH.inferredSpec
+#else
+makeTV = TH.plainTV
+#endif
+
+
 data PerDecl = PerDecl
   { ctorArgs :: [TH.TypeQ],
     ctorConstraints :: [TH.TypeQ],
     ctorName :: TH.Name,
-    ctorTyVars :: [TH.TyVarBndr],
+    ctorTyVars :: [TyVarBinder],
     functionName :: TH.Name,
     gadtReturnType :: TH.TypeQ,
     perEffect :: PerEffect
@@ -128,8 +143,8 @@ makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
       (rest, monadTV) = (init ctorTyVars, last ctorTyVars)
       getTyVar =
         varT . \case
-          TH.PlainTV n -> n
-          TH.KindedTV n _ -> n
+          TH.PlainTV n _ -> n
+          TH.KindedTV n _ _ -> n
       monadName = getTyVar monadTV
       -- Build the parameter to Has by consulting the number of required type parameters.
       invocation = foldl' appT effectType (fmap getTyVar (take (effectTyVarCount - 2) rest))
@@ -138,4 +153,4 @@ makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
       foldedSig = foldr (\a b -> arrowT `appT` a `appT` b) (monadName `appT` gadtReturnType) ctorArgs
       -- Glue together the Has and the per-constructor constraints.
       allConstraints = TH.cxt (hasConstraint : ctorConstraints)
-   in TH.sigD functionName (TH.forallT (rest ++ [monadTV, TH.plainTV sigVar]) allConstraints foldedSig)
+   in TH.sigD functionName (TH.forallT (rest ++ [monadTV, makeTV sigVar]) allConstraints foldedSig)
