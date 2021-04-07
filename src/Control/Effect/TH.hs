@@ -25,17 +25,27 @@ data PerEffect = PerEffect
     forallConstructor :: TH.Con
   }
 
+-- Hideous hacks to deal with kindedness changes in newer TH versions.
 #if MIN_VERSION_template_haskell(2,17,0)
 type TyVarBinder = TH.TyVarBndrSpec
-#else
-type TyVarBinder = TH.TyVarBndr
-#endif
 
 makeTV :: TH.Name -> TyVarBinder
-#if MIN_VERSION_template_haskell(2,17,0)
 makeTV n = TH.PlainTV n TH.inferredSpec
+
+tvName :: TyVarBinder -> TH.Name
+tvName = \case
+  TH.PlainTV n _ -> n
+  TH.KindedTV n _ _ -> n
 #else
+type TyVarBinder = TH.TyVarBndr
+
+makeTV :: TH.Name -> TyVarBinder
 makeTV = TH.plainTV
+
+tvName :: TyVarBinder -> TH.Name
+tvName = \case
+  TH.PlainTV n -> n
+  TH.KindedTV n _ -> n
 #endif
 
 
