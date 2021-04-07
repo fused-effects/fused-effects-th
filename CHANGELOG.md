@@ -3,6 +3,10 @@
 `fused-effects-th` uses [PVP Versioning][1].
 The changelog is available [on GitHub][2].
 
+## 0.1.0.3
+
+* GHC 9 support.
+
 ## 0.1.0.2
 
 * Fix a bug where typeclass constraints on GADT constructors were being ignored.
