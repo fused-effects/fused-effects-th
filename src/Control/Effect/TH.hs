@@ -151,10 +151,7 @@ makeSignature :: PerDecl -> TH.DecQ
 makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
   let sigVar = mkName "sig"
       (rest, monadTV) = (init ctorTyVars, last ctorTyVars)
-      getTyVar =
-        varT . \case
-          TH.PlainTV n _ -> n
-          TH.KindedTV n _ _ -> n
+      getTyVar = varT . tvName
       monadName = getTyVar monadTV
       -- Build the parameter to Has by consulting the number of required type parameters.
       invocation = foldl' appT effectType (fmap getTyVar (take (effectTyVarCount - 2) rest))
