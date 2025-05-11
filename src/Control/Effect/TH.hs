@@ -31,6 +31,7 @@ import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Datatype.TyVarBndr as THC
 import Optics
 
+-- Stores information about an overall effect type (its name and type variables).
 data PerEffect = PerEffect
   { _perEffectName :: TH.TypeQ,
     _perEffectTypeVars :: [THC.TyVarBndrVis]
@@ -38,6 +39,7 @@ data PerEffect = PerEffect
 
 makeFieldLabels ''PerEffect
 
+-- Stores information about a constructor of an effect type.
 data PerCtor = PerCtor
   { _perCtorArgs :: [TH.TypeQ],
     _perCtorConstraints :: [TH.TypeQ],
