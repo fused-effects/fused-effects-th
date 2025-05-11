@@ -24,7 +24,7 @@ import qualified Data.List as List
 
 data PerEffect = PerEffect
   { effectType :: TH.TypeQ,
-    effectTyVarCount :: Int,
+    effectTyVars :: [THCV.TyVarBndrVis],
     forallConstructor :: TH.Con
   }
 
@@ -74,14 +74,14 @@ makeSmartConstructors typ =
   TH.reify typ >>= \case
     -- If it's a type constructor, record its type name.
     TH.TyConI (TH.DataD _ctx tn tvs _kind constructors _derive) ->
-      let perEffect = PerEffect (TH.conT tn) (length tvs)
+      let perEffect = PerEffect (TH.conT tn) tvs
        in getAp (foldMap (Ap . makeDeclaration . perEffect) constructors)
     -- Die otherwise.
     other ->
       fail ("Can't generate definitions for a non-data-constructor: " <> TH.pprint other)
 
 makeDeclaration :: PerEffect -> TH.DecsQ
-makeDeclaration perEffect@PerEffect {..} = do
+makeDeclaration perEffect@PerEffect {forallConstructor} = do
   -- Start by extracting the relevant parts of this particular constructor.
   (names, ctorArgs, constraints, returnType, ctorTyVars) <- case forallConstructor of
     TH.ForallC vars ctx (TH.GadtC names bangtypes (TH.AppT _ final)) ->
@@ -109,7 +109,7 @@ makeDeclaration perEffect@PerEffect {..} = do
     pure [sign, func, prag]
 
 makePragma :: PerDecl -> TH.DecQ
-makePragma PerDecl {..} =
+makePragma PerDecl {functionName} =
   TH.pragInlD functionName TH.Inlinable TH.FunLike TH.AllPhases
 
 makeFunction :: PerDecl -> TH.DecQ
@@ -117,26 +117,32 @@ makeFunction d =
   TH.funD (functionName d) [makeClause d]
 
 makeClause :: PerDecl -> TH.ClauseQ
-makeClause PerDecl {..} = TH.clause pats body []
+makeClause PerDecl {ctorArgs, ctorName} = TH.clause pats body []
   where
     body = TH.normalB [e|send ($(applies))|]
     pats = fmap TH.varP names
     -- Glue together the parameter to 'send', fully applied
-    applies = foldl' (\e n -> e `TH.appE` TH.varE n) (TH.conE ctorName) names
+    applies = foldl' TH.appE (TH.conE ctorName) (fmap TH.varE names)
     -- A source of a, b, c... names for function parameters.
     names = fmap (mkName . pure) (take (length ctorArgs) ['a' .. 'z'])
 
 makeSignature :: PerDecl -> TH.DecQ
-makeSignature PerDecl {perEffect = PerEffect {effectType, effectTyVarCount}, ctorTyVars, ctorConstraints, ctorArgs, functionName, gadtReturnType} = do
-  Just (rest, monadTV) <- pure (List.unsnoc ctorTyVars) 
-  let sigVar = mkName "sig"
-      getTyVar = varT . THCV.tvName
-      monadName = getTyVar monadTV
+makeSignature PerDecl {perEffect = PerEffect {effectType, effectTyVars}, ctorTyVars, ctorConstraints, ctorArgs, functionName, gadtReturnType} = do
+  (rest, monadVar) <- case List.unsnoc ctorTyVars of
+    Just ok -> pure ok
+    Nothing -> fail "Error: not enough variables in effect constructor (needs at least two)"
+  let sigVar = THCV.plainTVSpecified $ mkName "sig"
+      var = varT . THCV.tvName
+      -- Look up any required type variable from the effect type, excluding `m` and `k`.
+      relevantEffectTyVars = take (length effectTyVars - 2) rest
       -- Build the parameter to Has by consulting the number of required type parameters.
-      invocation = foldl' appT effectType (fmap getTyVar (take (effectTyVarCount - 2) rest))
-      hasConstraint = [t|Has ($(invocation)) $(varT sigVar) $(monadName)|]
+      invocation = foldl' appT effectType (var <$> relevantEffectTyVars)
+      -- Build the Has constraint by applying the above to `sig` and `m`.
+      hasConstraint = [t| Has ($(invocation)) $(var sigVar) $(var monadVar) |]
       -- Build the type signature by folding with (->) over the function arguments as needed.
-      foldedSig = foldr (\a b -> arrowT `appT` a `appT` b) (monadName `appT` gadtReturnType) ctorArgs
+      foldedSig = foldr (\a b -> [t| $a -> $b |]) [t| $(var monadVar) $gadtReturnType |] ctorArgs
       -- Glue together the Has and the per-constructor constraints.
       allConstraints = TH.cxt (hasConstraint : ctorConstraints)
-   in TH.sigD functionName (TH.forallT (rest ++ [monadTV, THCV.plainTVSpecified sigVar]) allConstraints foldedSig)
+      -- Apply the above constraints to the type signature.
+      withForall = TH.forallT (rest ++ [monadVar, sigVar]) allConstraints foldedSig
+   in TH.sigD functionName withForall
