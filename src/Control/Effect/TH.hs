@@ -28,24 +28,26 @@ import Data.Monoid (Ap (..))
 import Data.Traversable
 import Language.Haskell.TH (appT, mkName, varT)
 import qualified Language.Haskell.TH as TH
-import qualified Language.Haskell.TH.Datatype.TyVarBndr as THCV
+import qualified Language.Haskell.TH.Datatype.TyVarBndr as THC
 import Optics
 
 data PerEffect = PerEffect
-  { _perEffectTypeName :: TH.TypeQ,
-    _perEffectTypeVars :: [THCV.TyVarBndrVis]
+  { _perEffectName :: TH.TypeQ,
+    _perEffectTypeVars :: [THC.TyVarBndrVis]
   }
 
 makeFieldLabels ''PerEffect
 
 data PerCtor = PerCtor
-  { ctorArgs :: [TH.TypeQ],
-    ctorConstraints :: [TH.TypeQ],
-    ctorName :: TH.Name,
-    ctorTyVars :: [THCV.TyVarBndrSpec],
-    functionName :: TH.Name,
-    gadtReturnType :: TH.TypeQ
+  { _perCtorArgs :: [TH.TypeQ],
+    _perCtorConstraints :: [TH.TypeQ],
+    _perCtorTypeVars :: [THC.TyVarBndrSpec],
+    _perCtorUppercaseName :: TH.Name,
+    _perCtorLowercaseName :: TH.Name,
+    _perCtorReturnType :: TH.TypeQ
   }
+
+makeFieldLabels ''PerCtor
 
 -- | Given an effect type, this splice generates functions that create per-constructor request functions.
 --
@@ -104,12 +106,12 @@ makeDeclaration perEffect forallConstructor = do
         downcase [] = error "attempted to downcase empty name"
         decl =
           PerCtor
-            { ctorName = ctorName,
-              functionName = downcase . TH.nameBase $ ctorName,
-              ctorArgs = fmap pure ctorArgs,
-              gadtReturnType = pure returnType,
-              ctorTyVars = ctorTyVars,
-              ctorConstraints = fmap pure constraints
+            { _perCtorUppercaseName = ctorName,
+              _perCtorLowercaseName = downcase . TH.nameBase $ ctorName,
+              _perCtorArgs = fmap pure ctorArgs,
+              _perCtorReturnType = pure returnType,
+              _perCtorTypeVars = ctorTyVars,
+              _perCtorConstraints = fmap pure constraints
             }
     sign <- makeSignature perEffect decl
     func <- makeBody decl
@@ -118,40 +120,40 @@ makeDeclaration perEffect forallConstructor = do
 
 -- generates {-# INLINEABLE $name #-}
 makePragma :: PerCtor -> TH.DecQ
-makePragma PerCtor {functionName} =
-  TH.pragInlD functionName TH.Inlinable TH.FunLike TH.AllPhases
+makePragma ctor =
+  TH.pragInlD (ctor ^. #lowercaseName) TH.Inlinable TH.FunLike TH.AllPhases
 
 -- generates $name [args...] = send ($Name args)
 makeBody :: PerCtor -> TH.DecQ
-makeBody PerCtor {functionName, ctorArgs, ctorName} = TH.funD functionName [TH.clause pats body []]
+makeBody ctor = TH.funD (ctor ^. #lowercaseName) [TH.clause pats body []]
   where
     body = TH.normalB [e|send ($(applies))|]
     pats = fmap TH.varP names
     -- Glue together the parameter to 'send', fully applied
-    applies = foldl' TH.appE (TH.conE ctorName) (fmap TH.varE names)
+    applies = foldl' TH.appE (TH.conE (ctor ^. #uppercaseName)) (fmap TH.varE names)
     -- A source of a, b, c... names for function parameters.
-    names = fmap (mkName . pure) (take (length ctorArgs) ['a' .. 'z'])
+    names = fmap (mkName . pure) (take (length (ctor ^. #args)) ['a' .. 'z'])
 
 -- generates $name :: forall [vars...] sig m => Has ($Name vars) sig m => m $result
 makeSignature :: PerEffect -> PerCtor -> TH.DecQ
-makeSignature eff PerCtor {ctorTyVars, ctorConstraints, ctorArgs, functionName, gadtReturnType} = do
+makeSignature eff ctor = do
   -- Can't use List.unsnoc here because it was added fairly recently.
   (rest, monadVar) <-
-    if List.null ctorTyVars
+    if List.null (ctor ^. #typeVars)
       then fail "Error: not enough variables in effect constructor (needs at least two)"
-      else pure (init ctorTyVars, last ctorTyVars)
-  let sigVar = THCV.plainTVSpecified $ mkName "sig"
-      var = varT . THCV.tvName
+      else pure (ctor ^. #typeVars % to init, ctor ^. #typeVars % to last)
+  let sigVar = THC.plainTVSpecified $ mkName "sig"
+      var = varT . THC.tvName
       -- Look up any required type variable from the effect type, excluding `m` and `k`.
       relevantEffectTyVars = take (length (eff ^. #typeVars) - 2) rest
       -- Build the parameter to Has by consulting the number of required type parameters.
-      invocation = foldl' appT (eff ^. #typeName) (var <$> relevantEffectTyVars)
+      invocation = foldl' appT (eff ^. #name) (var <$> relevantEffectTyVars)
       -- Build the Has constraint by applying the above to `sig` and `m`.
       hasConstraint = [t|Has ($(invocation)) $(var sigVar) $(var monadVar)|]
       -- Build the type signature by folding with (->) over the function arguments as needed.
-      foldedSig = foldr (\a b -> [t|$a -> $b|]) [t|$(var monadVar) $gadtReturnType|] ctorArgs
+      foldedSig = foldr (\a b -> [t|$a -> $b|]) [t|$(var monadVar) $(ctor ^. #returnType)|] (ctor ^. #args)
       -- Glue together the Has and the per-constructor constraints.
-      allConstraints = TH.cxt (hasConstraint : ctorConstraints)
+      allConstraints = TH.cxt (hasConstraint : (ctor ^. #constraints))
       -- Apply the above constraints to the type signature.
       withForall = TH.forallT (rest <> [monadVar, sigVar]) allConstraints foldedSig
-   in TH.sigD functionName withForall
+   in TH.sigD (ctor ^. #lowercaseName) withForall
