@@ -75,7 +75,7 @@ makeSmartConstructors typ =
     -- If it's a type constructor, record its type name.
     TH.TyConI (TH.DataD _ctx tn tvs _kind constructors _derive) ->
       let perEffect = PerEffect (TH.conT tn) tvs
-       in getAp (foldMap (Ap . makeDeclaration . perEffect) constructors)
+       in concat <$> traverse (makeDeclaration . perEffect) constructors
     -- Die otherwise.
     other ->
       fail ("Can't generate definitions for a non-data-constructor: " <> TH.pprint other)
@@ -128,9 +128,10 @@ makeClause PerDecl {ctorArgs, ctorName} = TH.clause pats body []
 
 makeSignature :: PerDecl -> TH.DecQ
 makeSignature PerDecl {perEffect = PerEffect {effectType, effectTyVars}, ctorTyVars, ctorConstraints, ctorArgs, functionName, gadtReturnType} = do
-  (rest, monadVar) <- case List.unsnoc ctorTyVars of
-    Just ok -> pure ok
-    Nothing -> fail "Error: not enough variables in effect constructor (needs at least two)"
+  -- Can't use List.unsnoc here because it was added fairly recently.
+  (rest, monadVar) <- if List.null ctorTyVars
+    then fail "Error: not enough variables in effect constructor (needs at least two)"
+    else pure (init ctorTyVars, last ctorTyVars)
   let sigVar = THCV.plainTVSpecified $ mkName "sig"
       var = varT . THCV.tvName
       -- Look up any required type variable from the effect type, excluding `m` and `k`.
