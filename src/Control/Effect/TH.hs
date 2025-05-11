@@ -2,6 +2,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# OPTIONS_GHC -Wno-unused-imports #-}
 
 -- | Defines splices that cut down on boilerplate associated with declaring new effects.
@@ -19,6 +20,7 @@ import Data.Traversable
 import Language.Haskell.TH (appT, arrowT, mkName, varT)
 import qualified Language.Haskell.TH.Datatype.TyVarBndr as THCV
 import qualified Language.Haskell.TH as TH
+import qualified Data.List as List
 
 data PerEffect = PerEffect
   { effectType :: TH.TypeQ,
@@ -125,9 +127,9 @@ makeClause PerDecl {..} = TH.clause pats body []
     names = fmap (mkName . pure) (take (length ctorArgs) ['a' .. 'z'])
 
 makeSignature :: PerDecl -> TH.DecQ
-makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
+makeSignature PerDecl {perEffect = PerEffect {effectType, effectTyVarCount}, ctorTyVars, ctorConstraints, ctorArgs, functionName, gadtReturnType} = do
+  Just (rest, monadTV) <- pure (List.unsnoc ctorTyVars) 
   let sigVar = mkName "sig"
-      (rest, monadTV) = (init ctorTyVars, last ctorTyVars)
       getTyVar = varT . THCV.tvName
       monadName = getTyVar monadTV
       -- Build the parameter to Has by consulting the number of required type parameters.
