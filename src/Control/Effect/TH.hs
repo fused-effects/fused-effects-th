@@ -1,8 +1,8 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 
 -- | Defines splices that cut down on boilerplate associated with declaring new effects.
 module Control.Effect.TH
@@ -17,6 +17,7 @@ import Data.Foldable
 import Data.Monoid (Ap (..))
 import Data.Traversable
 import Language.Haskell.TH (appT, arrowT, mkName, varT)
+import qualified Language.Haskell.TH.Datatype.TyVarBndr as THCV
 import qualified Language.Haskell.TH as TH
 
 data PerEffect = PerEffect
@@ -25,35 +26,11 @@ data PerEffect = PerEffect
     forallConstructor :: TH.Con
   }
 
--- Hideous hacks to deal with kindedness changes in newer TH versions.
-#if MIN_VERSION_template_haskell(2,17,0)
-type TyVarBinder = TH.TyVarBndrSpec
-
-makeTV :: TH.Name -> TyVarBinder
-makeTV n = TH.PlainTV n TH.inferredSpec
-
-tvName :: TyVarBinder -> TH.Name
-tvName = \case
-  TH.PlainTV n _ -> n
-  TH.KindedTV n _ _ -> n
-#else
-type TyVarBinder = TH.TyVarBndr
-
-makeTV :: TH.Name -> TyVarBinder
-makeTV = TH.plainTV
-
-tvName :: TyVarBinder -> TH.Name
-tvName = \case
-  TH.PlainTV n -> n
-  TH.KindedTV n _ -> n
-#endif
-
-
 data PerDecl = PerDecl
   { ctorArgs :: [TH.TypeQ],
     ctorConstraints :: [TH.TypeQ],
     ctorName :: TH.Name,
-    ctorTyVars :: [TyVarBinder],
+    ctorTyVars :: [THCV.TyVarBndrSpec],
     functionName :: TH.Name,
     gadtReturnType :: TH.TypeQ,
     perEffect :: PerEffect
@@ -151,7 +128,7 @@ makeSignature :: PerDecl -> TH.DecQ
 makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
   let sigVar = mkName "sig"
       (rest, monadTV) = (init ctorTyVars, last ctorTyVars)
-      getTyVar = varT . tvName
+      getTyVar = varT . THCV.tvName
       monadName = getTyVar monadTV
       -- Build the parameter to Has by consulting the number of required type parameters.
       invocation = foldl' appT effectType (fmap getTyVar (take (effectTyVarCount - 2) rest))
@@ -160,4 +137,4 @@ makeSignature PerDecl {perEffect = PerEffect {..}, ..} =
       foldedSig = foldr (\a b -> arrowT `appT` a `appT` b) (monadName `appT` gadtReturnType) ctorArgs
       -- Glue together the Has and the per-constructor constraints.
       allConstraints = TH.cxt (hasConstraint : ctorConstraints)
-   in TH.sigD functionName (TH.forallT (rest ++ [monadTV, makeTV sigVar]) allConstraints foldedSig)
+   in TH.sigD functionName (TH.forallT (rest ++ [monadTV, THCV.plainTVSpecified sigVar]) allConstraints foldedSig)

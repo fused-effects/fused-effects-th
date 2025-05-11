@@ -5,6 +5,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -ddump-splices #-}
 {-# OPTIONS_GHC -Wno-unused-binds #-}
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 
 module Main
   ( main,
